@@ -1,6 +1,8 @@
 from flaskr.models import User
 from flask_socketio import emit
 from flaskr.extensions import db
+import jwt
+import datetime
 
 def handle_action(data):
     method = data.get('method')
@@ -39,6 +41,24 @@ def handle_login(data):
 
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
-        emit('response', {'status': 'success', 'message': 'Login successful'})
+        payload = {
+            'user_id': user.id,
+            'username': user.username,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        }
+        token = jwt.encode(payload, 'secret', algorithm='HS256')
+        emit('response', {'status': 'success', 'message': 'Login successful', 'token': token})
     else:
         emit('response', {'status': 'error', 'message': 'Invalid credentials'})
+
+def verify_jwt(token):
+    try:
+        data = jwt.decode(token, algorithms=["HS256"])
+        return data  # contains user_id, username, exp, etc.
+    except jwt.ExpiredSignatureError:
+        emit("response", {"status": "error", "message": "Token expired"})
+    except jwt.InvalidTokenError:
+        emit("response", {"status": "error", "message": "Invalid token"})
+    return None
+
+

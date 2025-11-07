@@ -42,8 +42,8 @@ def emit_action(method, params):
 def register_user(direct=False):
     """Send registration request via direct or action method."""
     user_data = {
-        "username": "testuser12",
-        "email": "testuser12@example.com",
+        "username": "testuser123",
+        "email": "testuser1234@example.com",
         "password": "password123"
     }
 
@@ -58,7 +58,7 @@ def register_user(direct=False):
 def login_user(direct=False):
     """Send login request via direct or action method."""
     login_data = {
-        "username": "testuser12",
+        "username": "testuser123",
         "password": "password123"
     }
 
