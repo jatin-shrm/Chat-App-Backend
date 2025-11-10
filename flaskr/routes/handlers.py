@@ -2,7 +2,7 @@ import asyncio
 import websockets
 from flaskr import create_app
 from flaskr.extensions import db
-from flaskr.routes.events import handle_ws_message
+from flaskr.routes.ws_routes import handle_ws_message
 
 connected_clients = set()
 

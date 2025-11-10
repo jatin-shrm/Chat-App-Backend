@@ -1,64 +1,74 @@
 import json
 import jwt
-import datetime
+from datetime import datetime, timedelta, timezone
 from flaskr.models import User
 from flaskr.extensions import db
 
-async def handle_ws_message(ws, message):
-    """
-    Entry point for handling all WebSocket messages.
-    """
-    try:
-        data = json.loads(message)
-    except json.JSONDecodeError:
-        await ws.send(json.dumps({"status": "error", "message": "Invalid JSON"}))
-        return
 
-    method = data.get("method")
-    params = data.get("params", {})
-
-    if method == "register":
-        await handle_register(ws, params)
-    elif method == "login":
-        await handle_login(ws, params)
-    else:
-        await ws.send(json.dumps({"status": "error", "message": "Unknown method"}))
-
-async def handle_register(ws, data):
-    username = data.get("username")
-    email = data.get("email")
-    password = data.get("password")
+async def handle_register(params):
+    username = params.get("username")
+    email = params.get("email")
+    password = params.get("password")
 
     if not username or not email or not password:
-        await ws.send(json.dumps({"status": "error", "message": "All fields required"}))
-        return
+        return {"error": "All fields required", "code": -32602}
 
     if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
-        await ws.send(json.dumps({"status": "error", "message": "Username or email already exists"}))
-        return
+        return {"error": "Username or email already exists", "code": -32602}    
 
     new_user = User(username=username, email=email)
     new_user.set_password(password)
     db.session.add(new_user)
     db.session.commit()
-    await ws.send(json.dumps({"status": "success", "message": "Registration successful"}))
 
-async def handle_login(ws, data):
-    username = data.get("username")
-    password = data.get("password")
+    return {
+        "message": "Registration successful",
+        "username": new_user.username,
+    }
+
+
+async def handle_login(params):
+    username = params.get("username")
+    password = params.get("password")
+
+    if not username or not password:
+        return {"error": "Username and password required"}
 
     user = User.query.filter_by(username=username).first()
+
     if user and user.check_password(password):
         payload = {
             "user_id": user.id,
             "username": user.username,
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1)
         }
         token = jwt.encode(payload, "secret", algorithm="HS256")
-        await ws.send(json.dumps({
-            "status": "success",
+
+        return {
             "message": "Login successful",
-            "token": token
-        }))
+            "token": token,
+            "user" : user.username,
+        }
     else:
-        await ws.send(json.dumps({"status": "error", "message": "Invalid credentials"}))
+        return {"error": "Invalid credentials", "code": -32000}
+
+async def get_user_details(params):
+    token = params.get("token")
+    if not token:
+        return {"error": "Missing token"}
+
+    try:
+        decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return {"error": "Token expired"}
+    except jwt.InvalidTokenError:
+        return {"error": "Invalid token"}
+
+    user = User.query.get(decoded["user_id"])
+    if not user:
+        return {"error": "User not found"}
+
+    return {
+        "message": "User details fetched",
+        "username": user.username,
+    }
