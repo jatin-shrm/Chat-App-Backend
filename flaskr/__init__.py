@@ -1,7 +1,7 @@
 import os
 from flask import Flask
 from dotenv import load_dotenv
-from .extensions import db, migrate, socketio
+from .extensions import db, migrate
 
 def create_app():
     load_dotenv()
@@ -13,13 +13,13 @@ def create_app():
 
     db.init_app(app)
     migrate.init_app(app, db)
-    socketio.init_app(app)
+    # socketio.init_app(app)
 
     # from .routes import api_routes
     # app.register_blueprint(routes.bp)
 
     from .routes import events,api_routes
     app.register_blueprint(api_routes.bp)
-    events.register_ws_events(socketio)
+    # events.register_ws_events(socketio)
 
     return app
