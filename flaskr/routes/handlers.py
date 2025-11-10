@@ -1,4 +1,3 @@
-# websocket_server.py
 import asyncio
 import websockets
 from flaskr import create_app
@@ -7,7 +6,6 @@ from flaskr.routes.events import handle_ws_message
 
 connected_clients = set()
 
-# Create the Flask app so SQLAlchemy has context
 app = create_app()
 app.app_context().push()
 
