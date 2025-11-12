@@ -1,5 +1,5 @@
 import json
-from flaskr.routes.events import handle_register, handle_login, get_user_details
+from flaskr.routes.events import handle_register, handle_login,handle_refresh_token, get_user_details
 
 
 
@@ -46,6 +46,9 @@ async def handle_ws_message(ws, message):
             result = await handle_register(params)
         elif method == "login":
             result = await handle_login(params)
+
+        elif method == "refresh_token":
+            result = await handle_refresh_token(params)
 
         elif method == "get_user_details":
             result = await get_user_details(params)

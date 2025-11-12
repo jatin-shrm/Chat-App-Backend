@@ -37,20 +37,71 @@ async def handle_login(params):
     user = User.query.filter_by(username=username).first()
 
     if user and user.check_password(password):
-        payload = {
+        access_payload = {
             "user_id": user.id,
             "username": user.username,
+            "type": "access",
             "exp": datetime.now(timezone.utc) + timedelta(hours=1)
         }
-        token = jwt.encode(payload, "secret", algorithm="HS256")
+        access_token = jwt.encode(access_payload, "secret", algorithm="HS256")
+
+        refresh_payload = {
+            "user_id": user.id,
+            "username": user.username,
+            "type": "refresh",
+            "exp": datetime.now(timezone.utc) + timedelta(days=7)
+        }
+        refresh_token = jwt.encode(refresh_payload, "secret", algorithm="HS256")
 
         return {
             "message": "Login successful",
-            "token": token,
-            "user" : user.username,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": user.username,
         }
     else:
         return {"error": "Invalid credentials", "code": -32000}
+    
+
+async def handle_refresh_token(params):
+    refresh_token = params.get("refresh_token")
+    if not refresh_token:
+        return {"error": "Refresh token required"}
+
+    try:
+        decoded = jwt.decode(refresh_token, "secret", algorithms=["HS256"])
+
+        # Ensure token type is refresh
+        if decoded.get("type") != "refresh":
+            return {"error": "Invalid token type"}
+
+        user_id = decoded.get("user_id")
+        username = decoded.get("username")
+
+        # (Optional) verify user still exists or is active
+        user = User.query.filter_by(id=user_id, username=username).first()
+        if not user:
+            return {"error": "User not found"}
+
+        # Generate a new access token
+        new_access_payload = {
+            "user_id": user.id,
+            "username": user.username,
+            "type": "access",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=60)
+        }
+        new_access_token = jwt.encode(new_access_payload, "secret", algorithm="HS256")
+
+        return {
+            "message": "New access token issued",
+            "access_token": new_access_token
+        }
+
+    except jwt.ExpiredSignatureError:
+        return {"error": "Refresh token expired, please log in again"}
+    except jwt.InvalidTokenError:
+        return {"error": "Invalid refresh token"}
+
 
 async def get_user_details(params):
     token = params.get("token")
