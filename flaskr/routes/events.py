@@ -3,6 +3,42 @@ import jwt
 from datetime import datetime, timedelta, timezone
 from flaskr.models import User
 from flaskr.extensions import db
+from functools import wraps
+
+
+def requires_auth(func):
+    @wraps(func)
+    async def wrapper(params, token=None, current_user=None, *args, **kwargs):
+        # If the caller already resolved the user (e.g. per-connection session),
+        # skip token parsing.
+        if current_user:
+            kwargs["current_user"] = current_user
+            return await func(params, *args, **kwargs)
+
+        if not token:
+            return {"error": "Access token required"}
+
+        try:
+            decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+
+            if decoded.get("type") != "access":
+                return {"error": "Invalid token type"}
+
+            user_id = decoded.get("user_id")
+            user = User.query.get(user_id)
+
+            if not user:
+                return {"error": "User not found"}
+
+            kwargs["current_user"] = user
+            return await func(params, *args, **kwargs)
+
+        except jwt.ExpiredSignatureError:
+            return {"error": "Access token expired", "need_refresh": True}
+        except jwt.InvalidTokenError:
+            return {"error": "Invalid token"}
+
+    return wrapper
 
 
 async def handle_register(params):
@@ -57,6 +93,7 @@ async def handle_login(params):
             "message": "Login successful",
             "access_token": access_token,
             "refresh_token": refresh_token,
+            "user_id": user.id,
             "user": user.username,
         }
     else:
@@ -94,7 +131,9 @@ async def handle_refresh_token(params):
 
         return {
             "message": "New access token issued",
-            "access_token": new_access_token
+            "access_token": new_access_token,
+            "user_id": user.id,
+            "username": user.username,
         }
 
     except jwt.ExpiredSignatureError:
@@ -103,23 +142,67 @@ async def handle_refresh_token(params):
         return {"error": "Invalid refresh token"}
 
 
-async def get_user_details(params):
-    token = params.get("token")
+async def handle_auth_with_token(params):
+    """
+    Authenticates the user directly if a valid access token is provided.
+    This avoids re-login.
+    """
+    token = params.get("access_token")
     if not token:
-        return {"error": "Missing token"}
+        return {"error": "Access token required"}
 
     try:
         decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+
+        # Ensure it’s an access token (not refresh)
+        if decoded.get("type") != "access":
+            return {"error": "Invalid token type"}
+
+        user_id = decoded.get("user_id")
+        username = decoded.get("username")
+
+        # Optional: re-check user status in DB
+        user = User.query.filter_by(id=user_id, username=username).first()
+        if not user:
+            return {"error": "User not found"}
+
+        return {
+            "message": "Authenticated successfully",
+            "user_id": user.id,
+            "username": user.username,
+        }
+
     except jwt.ExpiredSignatureError:
-        return {"error": "Token expired"}
+        return {"error": "Access token expired", "need_refresh": True}
     except jwt.InvalidTokenError:
         return {"error": "Invalid token"}
 
-    user = User.query.get(decoded["user_id"])
-    if not user:
-        return {"error": "User not found"}
+# async def get_user_details(params):
+#     token = params.get("access_token")
+#     if not token:
+#         return {"error": "Missing token"}
 
+#     try:
+#         decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+#     except jwt.ExpiredSignatureError:
+#         return {"error": "Token expired"}
+#     except jwt.InvalidTokenError:
+#         return {"error": "Invalid token"}
+
+#     user = User.query.get(decoded["user_id"])
+#     if not user:
+#         return {"error": "User not found"}
+
+#     return {
+#         "message": "User details fetched",
+#         "username": user.username,
+#     }
+
+@requires_auth
+async def get_user_details(params, current_user=None):
     return {
         "message": "User details fetched",
-        "username": user.username,
+        "username": current_user.username,
+        "email": current_user.email,
     }
+

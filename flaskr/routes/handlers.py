@@ -4,22 +4,25 @@ from flaskr import create_app
 from flaskr.extensions import db
 from flaskr.routes.ws_routes import handle_ws_message
 
-connected_clients = set()
+# Store per-connection session context (e.g. authenticated user id, tokens, etc.)
+connected_clients = {}
 
 app = create_app()
 app.app_context().push()
 
+
 async def ws_handler(ws):
-    connected_clients.add(ws)
+    connected_clients[ws] = {"user_id": None, "access_token": None}
     print("✅ Client connected")
     try:
         async for message in ws:
             print("Received:", message)
-            await handle_ws_message(ws, message)
+            await handle_ws_message(ws, message, connected_clients)
     except websockets.ConnectionClosed:
         print("❌ Client disconnected")
     finally:
-        connected_clients.remove(ws)
+        connected_clients.pop(ws, None)
+
 
 async def start_websocket_server():
     async with websockets.serve(ws_handler, "0.0.0.0", 8765):
