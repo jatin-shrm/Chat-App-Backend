@@ -6,6 +6,9 @@ from flaskr.routes.events import (
     handle_refresh_token,
     handle_auth_with_token,
     get_user_details,
+    get_all_users,
+    handle_upload_profile_picture,
+    get_profile_picture
 )
 
 
@@ -91,6 +94,12 @@ async def handle_ws_message(ws, message, client_sessions):
 
         elif method == "get_user_details":
             result = await get_user_details(params, token=token, current_user=current_user)
+        elif method == "get_all_users":
+            result = await get_all_users(params, token=token, current_user=current_user)
+        elif method == "upload_profile_picture":
+            result = await handle_upload_profile_picture(params, token=token, current_user=current_user)
+        elif method == "get_profile_picture":
+            result = await get_profile_picture(params, token=token, current_user=current_user)
         else:
             await send_error(ws, req_id, f"Unknown method '{method}'", code=-32601)
             return

@@ -9,8 +9,6 @@ from functools import wraps
 def requires_auth(func):
     @wraps(func)
     async def wrapper(params, token=None, current_user=None, *args, **kwargs):
-        # If the caller already resolved the user (e.g. per-connection session),
-        # skip token parsing.
         if current_user:
             kwargs["current_user"] = current_user
             return await func(params, *args, **kwargs)
@@ -42,11 +40,12 @@ def requires_auth(func):
 
 
 async def handle_register(params):
+    name = params.get("name")
     username = params.get("username")
     email = params.get("email")
     password = params.get("password")
 
-    if not username or not email or not password:
+    if not name or not username or not email or not password:
         return {"error": "All fields required", "code": -32602}
 
     if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
@@ -60,6 +59,7 @@ async def handle_register(params):
     return {
         "message": "Registration successful",
         "username": new_user.username,
+        "name": new_user.name
     }
 
 
@@ -108,19 +108,16 @@ async def handle_refresh_token(params):
     try:
         decoded = jwt.decode(refresh_token, "secret", algorithms=["HS256"])
 
-        # Ensure token type is refresh
         if decoded.get("type") != "refresh":
             return {"error": "Invalid token type"}
 
         user_id = decoded.get("user_id")
         username = decoded.get("username")
 
-        # (Optional) verify user still exists or is active
         user = User.query.filter_by(id=user_id, username=username).first()
         if not user:
             return {"error": "User not found"}
 
-        # Generate a new access token
         new_access_payload = {
             "user_id": user.id,
             "username": user.username,
@@ -143,25 +140,18 @@ async def handle_refresh_token(params):
 
 
 async def handle_auth_with_token(params):
-    """
-    Authenticates the user directly if a valid access token is provided.
-    This avoids re-login.
-    """
     token = params.get("access_token")
     if not token:
         return {"error": "Access token required"}
 
     try:
         decoded = jwt.decode(token, "secret", algorithms=["HS256"])
-
-        # Ensure it’s an access token (not refresh)
         if decoded.get("type") != "access":
             return {"error": "Invalid token type"}
 
         user_id = decoded.get("user_id")
         username = decoded.get("username")
 
-        # Optional: re-check user status in DB
         user = User.query.filter_by(id=user_id, username=username).first()
         if not user:
             return {"error": "User not found"}
@@ -177,26 +167,7 @@ async def handle_auth_with_token(params):
     except jwt.InvalidTokenError:
         return {"error": "Invalid token"}
 
-# async def get_user_details(params):
-#     token = params.get("access_token")
-#     if not token:
-#         return {"error": "Missing token"}
 
-#     try:
-#         decoded = jwt.decode(token, "secret", algorithms=["HS256"])
-#     except jwt.ExpiredSignatureError:
-#         return {"error": "Token expired"}
-#     except jwt.InvalidTokenError:
-#         return {"error": "Invalid token"}
-
-#     user = User.query.get(decoded["user_id"])
-#     if not user:
-#         return {"error": "User not found"}
-
-#     return {
-#         "message": "User details fetched",
-#         "username": user.username,
-#     }
 
 @requires_auth
 async def get_user_details(params, current_user=None):
@@ -206,3 +177,45 @@ async def get_user_details(params, current_user=None):
         "email": current_user.email,
     }
 
+
+@requires_auth
+async def get_all_users(params, current_user=None):
+    users = User.query.all()
+    user_list = [{"id": user.id, "username": user.username, "name": user.name, "email": user.email} for user in users]
+    return {
+        "message": "All users fetched",
+        "users": user_list,
+        
+    }
+
+@requires_auth
+async def handle_upload_profile_picture(params, current_user=None):
+    image_url = params.get("image_url")
+
+    if not image_url:
+        return {"error": "Image URL required"}
+
+    # Update user profile image
+    current_user.profile_image = image_url
+    db.session.commit()
+
+    return {
+        "message": "Profile picture updated successfully",
+        "profile_image": current_user.profile_image,
+        "user_id": current_user.id,
+        "username": current_user.username
+    }
+
+@requires_auth
+async def get_profile_picture(params, current_user=None):
+    if not current_user.profile_image:
+        return {
+            "message": "No profile picture found",
+            "profile_image": None
+        }
+
+    return {
+        "message": "Profile picture fetched successfully",
+        "user_id": current_user.id,
+        "profile_image": current_user.profile_image
+    }
